@@ -1,0 +1,157 @@
+// Import packages
+import express from "express";
+import fs from "fs";
+import morgan from "morgan";
+
+const app = express();
+
+// Load movies from the JSON file
+const movies = JSON.parse(fs.readFileSync("./data/movies.json"));
+
+const logger = function (req, res, next) {
+  console.log(`${req.method} ${req.url}`);
+  next();
+};
+
+app.use(express.json());
+app.use(morgan("dev"));
+app.use(logger);
+app.use((req, res, next) => {
+  req.requestedAt = new Date().toISOString();
+  next();
+});
+
+// HANDLER FUNCTIONS
+const movieHandlers = {
+  // Handler for the root route
+  welcome: (req, res) => {
+    res.status(200).send("Welcome to the Movies API");
+  },
+
+  // Handler to get all movies
+  getAllMovies: (req, res) => {
+    res.status(200).json({
+      status: "success",
+      requestedAt: req.requestedAt,
+      results: movies.length,
+      data: {
+        movies,
+      },
+    });
+  },
+
+  // Handler to get a single movie by ID
+  getMovieById: (req, res) => {
+    const id = Number(req.params.id);
+    const movie = movies.find((m) => m.id === id);
+
+    if (!movie) {
+      return res.status(404).json({
+        status: "fail",
+        message: "Movie not found",
+      });
+    }
+
+    res.status(200).json({
+      status: "success",
+      data: {
+        movie,
+      },
+    });
+  },
+
+  // Handler to create a new movie
+  createMovie: (req, res) => {
+    const newId = movies.length > 0 ? movies[movies.length - 1].id + 1 : 1;
+    const newMovie = { id: newId, ...req.body };
+
+    movies.push(newMovie);
+
+    fs.writeFile("./data/movies.json", JSON.stringify(movies), (err) => {
+      if (err) {
+        return res.status(500).json({
+          status: "error",
+          message: "Failed to save movie",
+        });
+      }
+      res.status(201).json({
+        status: "success",
+        data: {
+          movie: newMovie,
+        },
+      });
+    });
+  },
+
+  // Handler to update a movie by ID
+  updateMovie: (req, res) => {
+    const id = Number(req.params.id);
+    const movie = movies.find((m) => m.id === id);
+
+    if (!movie) {
+      return res.status(404).json({
+        status: "fail",
+        message: "Movie not found",
+      });
+    }
+
+    Object.assign(movie, req.body);
+
+    fs.writeFile("./data/movies.json", JSON.stringify(movies), (err) => {
+      if (err) {
+        return res.status(500).json({
+          status: "error",
+          message: "Failed to update movie",
+        });
+      }
+      res.status(200).json({
+        status: "success",
+        data: {
+          movie,
+        },
+      });
+    });
+  },
+
+  // Handler to delete a movie by ID
+  deleteMovie: (req, res) => {
+    const id = Number(req.params.id);
+    const movieIndex = movies.findIndex((m) => m.id === id);
+
+    if (movieIndex === -1) {
+      return res.status(404).json({
+        status: "fail",
+        message: "Movie not found",
+      });
+    }
+
+    movies.splice(movieIndex, 1);
+
+    fs.writeFile("./data/movies.json", JSON.stringify(movies), (err) => {
+      if (err) {
+        return res.status(500).json({
+          status: "error",
+          message: "Failed to delete movie",
+        });
+      }
+      res.status(204).json({
+        status: "success",
+        data: null,
+      });
+    });
+  },
+};
+
+// ROUTES
+app.get("/", movieHandlers.welcome); // Root Route
+app.get("/api/v1/movies", movieHandlers.getAllMovies); // Get All Movies
+app.get("/api/v1/movies/:id", movieHandlers.getMovieById); // Get a Movie by ID
+app.post("/api/v1/movies", movieHandlers.createMovie); // Create a Movie
+app.patch("/api/v1/movies/:id", movieHandlers.updateMovie); // Update a Movie
+app.delete("/api/v1/movies/:id", movieHandlers.deleteMovie); // Delete a Movie
+
+// Start the server
+const port = 3000;
+app.listen(port, () => {
+  console.log(`Server is running on port ${port}`);
+});
